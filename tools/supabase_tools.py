@@ -1,4 +1,4 @@
-from typing import Sequence, Optional
+from typing import Optional, List
 from supabase import create_client, Client
 from pathlib import Path
 import tomllib
@@ -32,75 +32,58 @@ def get_supabase_client() -> Client:
     return create_client(url, key)
 
 # ---------- 2) Function to fetch any data from Supabase ----------
-def fetch_all_rows(
-    client: Client,
-    table: str,
-    columns: Optional[Sequence[str]] = None,
-    limit: Optional[int] = None,
-    order_by: Optional[str] = None,
-    ascending: bool = True,
-    page_size: int = 1000,   # practical PostgREST cap
+def fetch_all_rows_from_supabase(
+    table_name: str,
+    page_size: int = 1000,
 ) -> pd.DataFrame:
     """
-    Pages through `table` and returns a DataFrame.
-    - columns: explicit projection (None -> "*")
-    - limit: optional hard cap (stops early)
-    - order_by: optional single-column ordering
+    Read ALL rows from `table_name` using simple pagination. No filters, no ordering.
+    Returns a pandas DataFrame (empty if the table has no rows).
+
+    Notes:
+    - If the table is large, this will load it fully into memory.
+    - For Streamlit, wrap this with st.cache_data to avoid repeated downloads.
     """
-    select_clause = ",".join(columns) if columns else "*"
-    out_rows: list[dict] = []
-    fetched = 0
+    supabase = get_supabase_client()
+
+    rows: List[dict] = []
     start = 0
 
     while True:
-        q = client.table(table).select(select_clause)
-        if order_by:
-            q = q.order(order_by, desc=not ascending)
-
-        # respect the global limit if provided
-        effective_page = page_size
-        if limit is not None:
-            remaining = max(limit - fetched, 0)
-            if remaining == 0:
-                break
-            effective_page = min(effective_page, remaining)
-
-        res = q.range(start, start + effective_page - 1).execute()
-        data = getattr(res, "data", None) or []
-        if not data:
+        # Request a fixed window [start, start+page_size-1]
+        res = supabase.table(table_name).select("*").range(start, start + page_size - 1).execute()
+        batch = getattr(res, "data", None) or []
+        if not batch:
             break
 
-        out_rows.extend(data)
-        batch = len(data)
-        fetched += batch
-        start += batch
+        rows.extend(batch)
+        got = len(batch)
+        start += got
 
-        if batch < effective_page:
+        # If we got fewer rows than requested, that was the last page.
+        if got < page_size:
             break
 
-    return pd.DataFrame(out_rows)
-
+    return pd.DataFrame(rows)
 
 
 if __name__ == "__main__":
-    from pprint import pprint
+    pd.set_option('display.max_columns', None)
 
     # 1. Test connection
     try:
         supabase = get_supabase_client()
         print("✅ Connected to Supabase successfully.")
 
-        # Minimal test: try selecting 0 rows from the 'articles' table (if it exists)
-        try:
-            result = supabase.table("articles").select("*").limit(1).execute()
-            print("📦 Sample query from 'articles' table succeeded.")
-            pprint(result.data)
-        except Exception as query_err:
-            print("⚠️ Connection OK, but table query failed (maybe table doesn't exist yet):")
-            print(query_err)
-
     except Exception as e:
         print("❌ Failed to connect to Supabase.")
         print(e)
 
-    # 2. xxx
+    # 2. Reading all rows from a table
+    try:
+        df = fetch_all_rows_from_supabase("biwenger_player_stats")
+        print(f"📥 Fetched {len(df)} rows from 'biwenger_player_stats' table.")
+        print(df.head(3))
+    except Exception as e:
+        print("❌ Failed to fetch rows from 'biwenger_player_stats' table.")
+        print(e)
