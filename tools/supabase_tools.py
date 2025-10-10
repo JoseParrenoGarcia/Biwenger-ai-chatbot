@@ -3,6 +3,25 @@ from supabase import create_client, Client
 from pathlib import Path
 import tomllib
 import pandas as pd
+from functools import lru_cache
+import streamlit as st
+
+# ---------- 0) Cached data ----------
+try:
+    def cache_data(ttl: Optional[int] = None):
+        def _wrap(fn):
+            # keep a few variants if you later add args
+            cached = lru_cache(maxsize=4)(fn)
+            return cached
+        return _wrap
+
+    STREAMLIT = False
+
+except Exception:  # not running in functools
+    def cache_data(ttl: Optional[int] = 3600):
+        return st.cache_data(show_spinner=False, ttl=ttl)
+
+    STREAMLIT = True
 
 
 # ---------- 1) Client loader (reads ./secrets/supabase.toml) ----------
@@ -32,7 +51,7 @@ def get_supabase_client() -> Client:
     return create_client(url, key)
 
 # ---------- 2) Function to fetch any data from Supabase ----------
-def fetch_all_rows_from_supabase(
+def _fetch_all_rows_from_supabase_raw(
     table_name: str,
     page_size: int = 1000,
 ) -> pd.DataFrame:
@@ -67,6 +86,24 @@ def fetch_all_rows_from_supabase(
     return pd.DataFrame(rows)
 
 
+# ---------- 3) Cached wrappers to call by specific functions ----------
+@cache_data(ttl=3600)  # adjust TTL (seconds) to your freshness needs
+def fetch_all_rows_from_supabase(table_name: str) -> pd.DataFrame:
+    """
+    Cached "read entire table" helper.
+    In Streamlit, this uses st.cache_data; otherwise an in-process LRU.
+    """
+    return _fetch_all_rows_from_supabase_raw(table_name=table_name)
+
+# ---------- 4) Table-specific loading functions  ----------
+def load_biwenger_player_stats() -> pd.DataFrame:
+    """
+    Loads the full 'biwenger_player_stats' table (cached).
+    """
+    df = fetch_all_rows_from_supabase("biwenger_player_stats")
+    return df
+
+
 if __name__ == "__main__":
     pd.set_option('display.max_columns', None)
 
@@ -79,11 +116,24 @@ if __name__ == "__main__":
         print("❌ Failed to connect to Supabase.")
         print(e)
 
+    print('' + '='*70 + '\n')
+
     # 2. Reading all rows from a table
     try:
-        df = fetch_all_rows_from_supabase("biwenger_player_stats")
+        df = _fetch_all_rows_from_supabase_raw("biwenger_player_stats")
         print(f"📥 Fetched {len(df)} rows from 'biwenger_player_stats' table.")
         print(df.head(3))
+    except Exception as e:
+        print("❌ Failed to fetch rows from 'biwenger_player_stats' table.")
+        print(e)
+
+    print('' + '=' * 70 + '\n')
+
+    # 3. Cached read
+    try:
+        df_cached = load_biwenger_player_stats()
+        print(f"📥 (Cached) Fetched {len(df_cached)} rows from 'biwenger_player_stats' table.")
+        print(df_cached.head(3))
     except Exception as e:
         print("❌ Failed to fetch rows from 'biwenger_player_stats' table.")
         print(e)
