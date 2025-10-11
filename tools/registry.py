@@ -2,11 +2,11 @@
 # The registry file defines how your app runs them.
 # ----------------------------------------------------
 from typing import Callable, Dict, Any
-import supabase_tools
+from tools.supabase_tools import load_biwenger_player_stats
 
 # --- 1. Define mapping of tool name to Python callable ---
 TOOL_REGISTRY: Dict[str, Callable[..., Any]] = {
-    "load_biwenger_player_stats": supabase_tools.load_biwenger_player_stats,
+    "load_biwenger_player_stats": load_biwenger_player_stats,
 }
 
 # --- 2. Optional helper: unified executor ---
