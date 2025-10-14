@@ -1,10 +1,10 @@
 # app/streamlit_app.py
 import json
-import pandas as pd
 import streamlit as st
 
+from tools.specs import TOOL_SPECS
 from tools.registry import execute_tool
-from tools.specs import TOOL_SPECS  # just to show what's exposed to the LLM later
+from llm_clients.router import route_to_tool
 
 st.set_page_config(page_title="EDA Chatbot — Dual Route Prototype", layout="wide")
 st.title("EDA Chatbot — Phase R0: Deterministic vs. LLM Route (scaffold)")
@@ -49,31 +49,47 @@ with col_left:
 # ----------------------------
 with col_right:
     with st.container(border=True):
-        st.subheader("LLM route (coming soon)")
+        st.subheader("LLM route")
 
-        # This is the UI we’ll keep; we’ll just replace the mock plan with a real LLM call later.
-        user_text = st.text_input("Type a request (e.g., 'show me player stats')", "show me player stats")
+        user_text = st.text_input(
+            "Type a request (e.g., 'show me player stats')",
+            "show me player stats"
+        )
 
         st.markdown("**Tools advertised to the LLM (preview):**")
         st.code(json.dumps(TOOL_SPECS, indent=2), language="json")
 
-        # --- MOCK plan to show what will be returned by the LLM later ---
-        # For now we simulate the plan; later you'll call the model and parse its tool_call.
-        mock_plan = {
-            "tool_name": "load_biwenger_player_stats",  # what the model would likely choose
-            "args": {}                                  # no args yet
-        }
-        with st.expander("Planned tool call (mock)"):
-            st.json(mock_plan)
+        colA, colB = st.columns([1, 1])
+        route_clicked = colA.button("Route with LLM", type="primary")
+        run_clicked = colB.button("Route + Execute")
 
-        # Button that *will* run the selected tool once LLM is wired
-        if st.button("Execute planned tool (mock)"):
+        # Keep latest plan in session so routing and execution can be separate clicks
+        if "llm_plan" not in st.session_state:
+            st.session_state.llm_plan = None
+
+        if route_clicked or run_clicked:
             try:
-                df = execute_tool(mock_plan["tool_name"], mock_plan.get("args", {}))
-                st.success(f"LLM plan executed: {mock_plan['tool_name']} → {len(df)} rows")
-                st.dataframe(df, use_container_width=True, height=480)
+                with st.spinner("Routing…"):
+                    plan = route_to_tool(user_text, TOOL_SPECS)   # pure plan: {tool_name, args, confidence}
+                st.session_state.llm_plan = plan
+                st.success(f"Planned tool: `{plan.tool_name}` (confidence={plan.confidence:.2f})")
+                with st.expander("Plan (JSON)"):
+                    st.json(plan.model_dump())
             except Exception as e:
-                st.error("❌ Failed to execute planned tool")
+                st.session_state.llm_plan = None
+                st.error(f"Routing failed: {e}")
+
+        # Execute if we have a plan and user clicked "Route + Execute"
+        if run_clicked and st.session_state.llm_plan:
+            try:
+                with st.spinner("Executing tool…"):
+                    plan = st.session_state.llm_plan
+                    df = execute_tool(plan.tool_name, plan.args)
+                st.success(f"Executed `{plan.tool_name}` → {len(df)} rows")
+                st.dataframe(df, use_container_width=True, height=480)
+
+            except Exception as e:
+                st.error("❌ Failed to execute tool")
                 st.exception(e)
 
 st.markdown("---")

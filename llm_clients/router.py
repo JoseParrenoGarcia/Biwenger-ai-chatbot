@@ -1,94 +1,103 @@
+# llm_clients/router.py
 from __future__ import annotations
 import json, re
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field, ValidationError
 from openai import OpenAI
 
-# 1) Return type
+from llm_clients.openai_client import get_openai_client, get_default_model
+
 class ToolCall(BaseModel):
     tool_name: str
     args: Dict[str, Any] = Field(default_factory=dict)
     confidence: float = 0.5
 
-# 2) Tiny prompt bits
-ROUTER_SYSTEM = (
-    "You are a tool router. Choose exactly one tool from the provided list and output STRICT JSON "
-    'as {"tool_name": "...", "args": {...}, "confidence": 0..1}. Do not add prose.'
-)
-
-# 3) Robust JSON extraction
 _FENCED = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
 
 def _extract_json(text: str) -> Optional[Dict[str, Any]]:
+    if not text: return None
     m = _FENCED.search(text)
     if m:
         try: return json.loads(m.group(1))
         except: pass
-    try:
-        return json.loads(text)
-    except:
-        # last resort: first {...}
-        start = text.find("{")
-        if start == -1: return None
-        depth = 0
-        for i, ch in enumerate(text[start:], start):
-            if ch == "{": depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    try: return json.loads(text[start:i+1])
-                    except: return None
-    return None
+    try: return json.loads(text)
+    except: return None
 
-# 4) The router: returns a plan or raises
+def _to_chat_tools(tool_specs: List[dict]) -> List[dict]:
+    """
+    Accepts specs like {"type":"function","function":{...}} (preferred)
+    or flat {"type":"function","name":...} and returns nested chat-compatible form.
+    """
+    out = []
+    for t in tool_specs:
+        if t.get("type") != "function":
+            raise ValueError("Only function tools are supported.")
+        if "function" in t:
+            out.append(t)
+        else:
+            out.append({
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t.get("parameters", {"type":"object","properties":{},"additionalProperties":False})
+                }
+            })
+    return out
+
 def route_to_tool(
     user_text: str,
     tool_specs: List[dict],
     *,
-    model: str = "gpt-4o-mini",
+    model: Optional[str] = None,
     client: Optional[OpenAI] = None,
 ) -> ToolCall:
     """
-    Ask the model to select a single tool and arguments.
-    Returns a ToolCall. Does NOT execute the tool. Does NOT have a fallback.
-    Raises ValueError if no valid plan is returned.
+    Single-shot router. Returns a ToolCall; does NOT execute the tool.
+    Raises ValueError if the model doesn't produce a valid plan.
     """
-    if not tool_specs:
-        raise ValueError("No tools provided to router.")
-    if not user_text or not user_text.strip():
+    if not user_text.strip():
         raise ValueError("Empty user_text.")
+    if not tool_specs:
+        raise ValueError("No tool specs provided.")
 
-    client = client or OpenAI()
+    client = client or get_openai_client()
+    model = model or get_default_model()
+    tools = _to_chat_tools(tool_specs)
 
-    # Keep the prompt short; your tool specs carry the meaning.
-    user_prompt = f'User: "{user_text}"\nRespond with STRICT JSON only.'
+    messages = [
+        {"role": "system",
+         "content": (
+            "You are a tool router. Choose exactly one function from the provided tools and "
+            'output STRICT JSON: {"tool_name":"...","args":{...},"confidence":0..1}. '
+            "Do not add prose."
+         )},
+        {"role": "user", "content": f'User: "{user_text}"\nRespond with STRICT JSON only.'}
+    ]
 
-    resp = client.responses.create(
+    resp = client.chat.completions.create(
         model=model,
-        input=[{"role": "system", "content": ROUTER_SYSTEM},
-               {"role": "user",   "content": user_prompt}],
-        tools=tool_specs,
+        messages=messages,
+        tools=tools,
+        tool_choice="auto",
     )
 
-    # Prefer structured tool_call blocks if the model returns them
-    try:
-        for item in resp.output:
-            if getattr(item, "type", None) == "tool_call":
-                fn = item.tool_call.function
-                data = {
-                    "tool_name": fn.name,
-                    "args": json.loads(fn.arguments or "{}"),
-                    "confidence": 0.75  # conservative default if not provided
-                }
-                return ToolCall(**data)
-    except Exception:
-        pass
+    msg = resp.choices[0].message
 
-    # Otherwise parse text
-    data = _extract_json(resp.output_text or "")
+    # Preferred: model emits a tool call directly
+    if msg.tool_calls:
+        tc = msg.tool_calls[0]
+        data = {
+            "tool_name": tc.function.name,
+            "args": json.loads(tc.function.arguments or "{}"),
+            "confidence": 0.75,  # default if model didn't include one
+        }
+        return ToolCall(**data)
+
+    # Else parse raw JSON plan text, if the model printed it
+    data = _extract_json(msg.content or "")
     if not data:
-        raise ValueError("Router returned no parsable plan.")
-
+        raise ValueError("Router returned no tool_call and no parsable JSON plan.")
     try:
         return ToolCall(**data)
     except ValidationError as e:
