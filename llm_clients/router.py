@@ -11,6 +11,8 @@ class ToolCall(BaseModel):
     tool_name: str
     args: Dict[str, Any] = Field(default_factory=dict)
     confidence: float = 0.5
+    why: str = ""  # ≤120 chars, one sentence
+    assumptions: List[str] = Field(default_factory=list)  # up to 3 short bullets
 
 _FENCED = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
 
@@ -65,13 +67,19 @@ def route_to_tool(
     model = model or get_default_model()
     tools = _to_chat_tools(tool_specs)
 
+    ROUTER_SYSTEM = (
+        "You are a tool router. Choose exactly one function from the provided tools and "
+        "output STRICT JSON with keys:\n"
+        '  - "tool_name": string | example: load_biwenger_player_stats\n'
+        '  - "args": object | example: {}\n'
+        '  - "confidence": number | range 0 to 1\n'
+        '  - "why": short string (<=120 chars, one sentence)\n'
+        '  - "assumptions": array of 0-3 short strings\n'
+        "No prose or explanations outside the JSON. Do NOT include chain-of-thought; only a brief justification."
+    )
+
     messages = [
-        {"role": "system",
-         "content": (
-            "You are a tool router. Choose exactly one function from the provided tools and "
-            'output STRICT JSON: {"tool_name":"...","args":{...},"confidence":0..1}. '
-            "Do not add prose."
-         )},
+        {"role": "system", "content": (ROUTER_SYSTEM)},
         {"role": "user", "content": f'User: "{user_text}"\nRespond with STRICT JSON only.'}
     ]
 
