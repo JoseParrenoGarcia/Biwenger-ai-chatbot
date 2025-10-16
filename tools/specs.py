@@ -8,9 +8,8 @@ MAKE_PLAN_SPEC = {
         "name": "make_plan",
         "description": (
             "Plan a minimal sequence of steps to satisfy the user's request. "
-            "Allowed steps for now: "
-            "'read_table'"
-            "'filter_df' "
+            "Understand the user's intent and decompose it into a series of calls to available tools. "
+            "For example, only read a table, or read and process the data by filtering, aggregating, etc, or even generating plots."
             "Return STRICT JSON matching the schema of {steps, why, assumptions}."
         ),
         "parameters": {
@@ -22,7 +21,7 @@ MAKE_PLAN_SPEC = {
                     "items": {
                         "type": "object",
                         "properties": {
-                            "tool": { "type": "string", "enum": ["read_table", "filter_df"] },
+                            "tool": { "type": "string", "enum": ["load_biwenger_player_stats"] },
                             "args": { "type": "object" }
                         },
                         "required": ["tool"]

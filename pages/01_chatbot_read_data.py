@@ -3,7 +3,7 @@ import json
 import streamlit as st
 
 from tools.specs import PLANNER_TOOL_SPECS, EXECUTION_TOOL_SPECS
-from tools.registry import execute_tool
+from tools.registry import execute_tool, execute_plan
 from llm_clients.router import route_to_tool
 
 st.set_page_config(page_title="EDA Chatbot — Dual Route Prototype", layout="wide")
@@ -67,29 +67,29 @@ with col_right:
         if "llm_plan" not in st.session_state:
             st.session_state.llm_plan = None
 
+        # Route (plan) --------------------------------------
         if route_clicked or run_clicked:
             try:
-                with st.spinner("Routing…"):
-                    plan = route_to_tool(user_text, PLANNER_TOOL_SPECS)   # pure plan: {tool_name, args, confidence}
-                st.session_state.llm_plan = plan
-                st.success(f"Planned tool: `{plan.tool_name}` (confidence={plan.confidence:.2f})")
+                with st.spinner("Planning…"):
+                    plan_call = route_to_tool(user_text, PLANNER_TOOL_SPECS)  # ToolCall for make_plan
+                plan_dict = plan_call.args  # <-- the Plan IR dict
+                st.session_state.llm_plan = plan_dict
+                st.success("Planned ✔")
                 with st.expander("Plan (JSON)"):
-                    st.json(plan.model_dump())
+                    st.json(plan_dict)  # show steps/why/assumptions
             except Exception as e:
                 st.session_state.llm_plan = None
-                st.error(f"Routing failed: {e}")
+                st.error(f"Planning failed: {e}")
 
-        # Execute if we have a plan and user clicked "Route + Execute"
+        # Execute (run the plan steps) -----------------------
         if run_clicked and st.session_state.llm_plan:
             try:
-                with st.spinner("Executing tool…"):
-                    plan = st.session_state.llm_plan
-                    df = execute_tool(plan.tool_name, plan.args)
-                st.success(f"Executed `{plan.tool_name}` → {len(df)} rows")
+                with st.spinner("Executing plan…"):
+                    df = execute_plan(st.session_state.llm_plan)  # <-- run steps, not make_plan
+                st.success(f"Executed plan → {len(df)} rows")
                 st.dataframe(df, use_container_width=True, height=480)
-
             except Exception as e:
-                st.error("❌ Failed to execute tool")
+                st.error("❌ Failed to execute plan")
                 st.exception(e)
 
 st.markdown("---")
