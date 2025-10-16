@@ -2,7 +2,7 @@
 import json
 import streamlit as st
 
-from tools.specs import TOOL_SPECS
+from tools.specs import PLANNER_TOOL_SPECS, EXECUTION_TOOL_SPECS
 from tools.registry import execute_tool
 from llm_clients.router import route_to_tool
 
@@ -57,7 +57,7 @@ with col_right:
         )
 
         st.markdown("**Tools advertised to the LLM (preview):**")
-        st.code(json.dumps(TOOL_SPECS, indent=2), language="json")
+        st.code(json.dumps(EXECUTION_TOOL_SPECS, indent=2), language="json")
 
         colA, colB = st.columns([1, 1])
         route_clicked = colA.button("Route with LLM", type="primary")
@@ -70,7 +70,7 @@ with col_right:
         if route_clicked or run_clicked:
             try:
                 with st.spinner("Routing…"):
-                    plan = route_to_tool(user_text, TOOL_SPECS)   # pure plan: {tool_name, args, confidence}
+                    plan = route_to_tool(user_text, PLANNER_TOOL_SPECS)   # pure plan: {tool_name, args, confidence}
                 st.session_state.llm_plan = plan
                 st.success(f"Planned tool: `{plan.tool_name}` (confidence={plan.confidence:.2f})")
                 with st.expander("Plan (JSON)"):

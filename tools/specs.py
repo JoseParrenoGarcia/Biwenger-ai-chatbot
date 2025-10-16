@@ -2,6 +2,41 @@
 # The specs file defines how the LLM sees the tools.
 # ----------------------------------------------------
 
+MAKE_PLAN_SPEC = {
+    "type": "function",
+    "function": {
+        "name": "make_plan",
+        "description": (
+            "Plan a minimal sequence of steps to satisfy the user's request. "
+            "Allowed steps for now: "
+            "'read_table'"
+            "'filter_df' "
+            "Return STRICT JSON matching the schema of {steps, why, assumptions}."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "steps": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "tool": { "type": "string", "enum": ["read_table", "filter_df"] },
+                            "args": { "type": "object" }
+                        },
+                        "required": ["tool"]
+                    }
+                },
+                "why": { "type": "string" },
+                "assumptions": { "type": "array", "items": { "type": "string" }, "maxItems": 3 }
+            },
+            "required": ["steps"],
+            "additionalProperties": False
+        }
+    }
+}
+
 LOAD_BIWENGER_PLAYER_STATS_SPEC = {
     "type": "function",
     "function": {
@@ -21,6 +56,12 @@ LOAD_BIWENGER_PLAYER_STATS_SPEC = {
     }
 }
 
-TOOL_SPECS = [
-    LOAD_BIWENGER_PLAYER_STATS_SPEC,
-]
+# TOOL_SPECS = [
+#     LOAD_BIWENGER_PLAYER_STATS_SPEC,
+# ]
+
+# Router will see ONLY the planner:
+PLANNER_TOOL_SPECS = [MAKE_PLAN_SPEC]
+
+# Executor knows about concrete runtime functions:
+EXECUTION_TOOL_SPECS = [LOAD_BIWENGER_PLAYER_STATS_SPEC]
