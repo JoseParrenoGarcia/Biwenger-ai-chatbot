@@ -30,6 +30,12 @@ _SCHEMA_REGISTRY = {
             "only_use_listed_columns": True,
             "date_column": "as_of_date",
         },
+        "value_hints": {
+          "position": {
+            "values": ["Goalkeeper", "Defender", "Midfielder", "Forward"],
+            "complete": True,
+          },
+        }
     }
 }
 
