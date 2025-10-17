@@ -5,15 +5,15 @@ from tools.specs import PLANNER_TOOL_SPECS
 from tools.registry import execute_plan
 from tools.schema_catalog import get_planner_context
 
-st.set_page_config(page_title="EDA Chatbot — Plan Only", layout="wide")
-st.title("Phase 2 (minimal) — Plan Only")
+st.set_page_config(page_title="EDA Chatbot", layout="wide")
+st.title("Phase 2 - Plan multistep: read + filter")
 
 with st.container(border=True):
     st.subheader("LLM Planner")
 
     user_text = st.text_input(
         "Type a request (e.g., 'Real Madrid players since 2025-09-01')",
-        "Show me data about Mbappe in 2025"
+        "Show me data about Mbappé"
     )
 
     st.markdown("**LLM-visible tools:** `PLANNER_TOOL_SPECS = [MAKE_PLAN_SPEC]`")

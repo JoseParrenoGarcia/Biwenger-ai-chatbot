@@ -29,25 +29,6 @@ _SCHEMA_REGISTRY = {
         "rules": {
             "only_use_listed_columns": True,
             "date_column": "as_of_date",
-            "year_filter": (
-                "For 'in YEAR', use as_of_date >= 'YEAR-01-01' "
-                "and < 'YEAR+1-01-01'."
-            ),
-            "string_match": (
-                "Use case-insensitive 'contains' on player_name for fuzzy queries "
-                "(e.g., 'Mbappe')."
-            ),
-            "allowed_ops": [
-                "==", "!=", ">", ">=", "<", "<=", "in", "not_in", "contains",
-            ],
-        },
-        "aliases": {
-            "name": "player_name",
-            "rating": "average",
-            "price": "value",
-            "market_buy_pct": "market_purchases_pct",
-            "market_sell_pct": "market_sales_pct",
-            "market_use_pct": "market_usage_pct",
         },
     }
 }

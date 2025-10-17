@@ -79,11 +79,6 @@ def route_to_tool(
         "No prose or explanations outside the JSON. Do NOT include chain-of-thought; only a brief justification."
     )
 
-    # messages = [
-    #     {"role": "system", "content": (ROUTER_SYSTEM)},
-    #     {"role": "user", "content": f'User: "{user_text}"\nRespond with STRICT JSON only.'}
-    # ]
-
     messages = [
         {"role": "system", "content": (ROUTER_SYSTEM)},
     ]

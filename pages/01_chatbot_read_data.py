@@ -5,8 +5,8 @@ from tools.specs import PLANNER_TOOL_SPECS
 from tools.registry import execute_plan
 from llm_clients.router import route_to_tool
 
-st.set_page_config(page_title="EDA Chatbot — Dual Route Prototype", layout="wide")
-st.title("EDA Chatbot — Phase R0: LLM Route to read data")
+st.set_page_config(page_title="EDA Chatbot", layout="wide")
+st.title("Phase R0: LLM Route to read data")
 
 
 with st.container(border=True):
