@@ -1,8 +1,9 @@
 import streamlit as st
 
-from tools.specs import PLANNER_TOOL_SPECS
 from llm_clients.router import route_to_tool
+from tools.specs import PLANNER_TOOL_SPECS
 from tools.registry import execute_plan
+from tools.schema_catalog import get_planner_context
 
 st.set_page_config(page_title="EDA Chatbot — Plan Only", layout="wide")
 st.title("Phase 2 (minimal) — Plan Only")
@@ -28,7 +29,8 @@ with st.container(border=True):
     if plan_clicked:
         try:
             with st.spinner("Planning…"):
-                plan_call = route_to_tool(user_text, PLANNER_TOOL_SPECS)  # ToolCall for make_plan
+                schema_json = get_planner_context("biwenger_player_stats")
+                plan_call = route_to_tool(user_text, PLANNER_TOOL_SPECS, context=schema_json)  # ToolCall for make_plan
             plan = plan_call.args  # STRICT JSON plan (dict with steps, why, assumptions)
             st.session_state.llm_plan = plan
 

@@ -53,6 +53,7 @@ def route_to_tool(
     *,
     model: Optional[str] = None,
     client: Optional[OpenAI] = None,
+    context: Optional[str] = None,
 ) -> ToolCall:
     """
     Single-shot router. Returns a ToolCall; does NOT execute the tool.
@@ -78,10 +79,20 @@ def route_to_tool(
         "No prose or explanations outside the JSON. Do NOT include chain-of-thought; only a brief justification."
     )
 
+    # messages = [
+    #     {"role": "system", "content": (ROUTER_SYSTEM)},
+    #     {"role": "user", "content": f'User: "{user_text}"\nRespond with STRICT JSON only.'}
+    # ]
+
     messages = [
         {"role": "system", "content": (ROUTER_SYSTEM)},
-        {"role": "user", "content": f'User: "{user_text}"\nRespond with STRICT JSON only.'}
     ]
+    if context:
+        messages.append({"role": "system", "content": f"CONTEXT_SCHEMA:\n{context}"})
+
+    messages.append(
+        {"role": "user", "content": f'User: "{user_text}"\nRespond with STRICT JSON only.'}
+    )
 
     resp = client.chat.completions.create(
         model=model,
