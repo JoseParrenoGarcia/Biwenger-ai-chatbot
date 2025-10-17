@@ -57,7 +57,13 @@ with col_right:
         )
 
         st.markdown("**Tools advertised to the LLM (preview):**")
-        st.code(json.dumps(EXECUTION_TOOL_SPECS, indent=2), language="json")
+        st.code("""
+        Router will see ONLY the planner: 
+        PLANNER_TOOL_SPECS = [MAKE_PLAN_SPEC]
+         
+        Executor knows about concrete runtime functions: 
+        EXECUTION_TOOL_SPECS = [LOAD_BIWENGER_PLAYER_STATS_SPEC]""",
+                language="python")
 
         colA, colB = st.columns([1, 1])
         route_clicked = colA.button("Route with LLM", type="primary")

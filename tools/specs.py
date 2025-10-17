@@ -1,7 +1,6 @@
 # ----------------------------------------------------
 # The specs file defines how the LLM sees the tools.
 # ----------------------------------------------------
-
 MAKE_PLAN_SPEC = {
     "type": "function",
     "function": {
@@ -27,10 +26,22 @@ MAKE_PLAN_SPEC = {
                         "required": ["tool"]
                     }
                 },
-                "why": { "type": "string" },
-                "assumptions": { "type": "array", "items": { "type": "string" }, "maxItems": 3 }
+                "why": {
+                    "type": "string",
+                    "description": "One-sentence rationale (<=120 chars).",
+                    "maxLength": 120
+                },
+                "assumptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "maxItems": 3,
+                    "description": "0–3 short bullets that state key assumptions."
+                }
             },
-            "required": ["steps"],
+            "required": ["steps", "why", "assumptions"],
             "additionalProperties": False
         }
     }
@@ -54,10 +65,6 @@ LOAD_BIWENGER_PLAYER_STATS_SPEC = {
         }
     }
 }
-
-# TOOL_SPECS = [
-#     LOAD_BIWENGER_PLAYER_STATS_SPEC,
-# ]
 
 # Router will see ONLY the planner:
 PLANNER_TOOL_SPECS = [MAKE_PLAN_SPEC]
