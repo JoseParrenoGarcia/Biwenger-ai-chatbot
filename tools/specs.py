@@ -1,15 +1,63 @@
 # ----------------------------------------------------
 # The specs file defines how the LLM sees the tools.
 # ----------------------------------------------------
+# MAKE_PLAN_SPEC = {
+#     "type": "function",
+#     "function": {
+#         "name": "make_plan",
+#         "description": (
+#             "Plan a minimal sequence of steps to satisfy the user's request. "
+#             "Understand the user's intent and decompose it into a series of calls to available tools. "
+#             "For example, only read a table, or read and process the data by filtering, aggregating, etc, or even generating plots."
+#             "Return STRICT JSON matching the schema of {steps, why, assumptions}."
+#         ),
+#         "parameters": {
+#             "type": "object",
+#             "properties": {
+#                 "steps": {
+#                     "type": "array",
+#                     "minItems": 1,
+#                     "items": {
+#                         "type": "object",
+#                         "properties": {
+#                             "tool": { "type": "string", "enum": ["load_biwenger_player_stats", "filter_df"] },
+#                             "args": { "type": "object" }
+#                         },
+#                         "required": ["tool"]
+#                     }
+#                 },
+#                 "why": {
+#                     "type": "string",
+#                     "description": "One-sentence rationale (<=120 chars).",
+#                     "maxLength": 120
+#                 },
+#                 "assumptions": {
+#                     "type": "array",
+#                     "items": {
+#                         "type": "string",
+#                         "maxLength": 120
+#                     },
+#                     "maxItems": 3,
+#                     "description": "0–3 short bullets that state key assumptions."
+#                 }
+#             },
+#             "required": ["steps", "why", "assumptions"],
+#             "additionalProperties": False
+#         }
+#     }
+# }
+
 MAKE_PLAN_SPEC = {
     "type": "function",
     "function": {
         "name": "make_plan",
         "description": (
-            "Plan a minimal sequence of steps to satisfy the user's request. "
-            "Understand the user's intent and decompose it into a series of calls to available tools. "
-            "For example, only read a table, or read and process the data by filtering, aggregating, etc, or even generating plots."
-            "Return STRICT JSON matching the schema of {steps, why, assumptions}."
+            "Plan the MINIMAL sequence of steps to satisfy the user's request using available tools.\n"
+            "Allowed steps now:\n"
+            "  - 'load_biwenger_player_stats' (load season snapshot as a DataFrame)\n"
+            "  - 'filter_df' (filter the current DataFrame; MUST include args.filters)\n"
+            "Always include 'why' (<=120 chars) and up to 3 short 'assumptions'. "
+            "Return STRICT JSON with keys: steps, why, assumptions."
         ),
         "parameters": {
             "type": "object",
@@ -20,25 +68,54 @@ MAKE_PLAN_SPEC = {
                     "items": {
                         "type": "object",
                         "properties": {
-                            "tool": { "type": "string", "enum": ["load_biwenger_player_stats"] },
-                            "args": { "type": "object" }
+                            "tool": {
+                                "type": "string",
+                                "enum": ["load_biwenger_player_stats", "filter_df"]
+                            },
+                            "args": {
+                                "type": "object",
+                                "description": (
+                                    "Arguments for the step. For 'filter_df', you MUST provide 'filters' "
+                                    "as a non-empty array of {col, op, val}. Example:\n"
+                                    "{ \"filters\": [ {\"col\":\"player_name\",\"op\":\"contains\",\"val\":\"Mbappe\"}, "
+                                    "{\"col\":\"as_of_date\",\"op\":\">=\",\"val\":\"2025-01-01\"}, "
+                                    "{\"col\":\"as_of_date\",\"op\":\"<\",\"val\":\"2026-01-01\"} ] }"
+                                ),
+                                "properties": {
+                                    "filters": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "col": {"type": "string"},
+                                                "op": {
+                                                    "type": "string",
+                                                    "enum": ["==","!=",">",">=","<","<=","in","not_in","contains"]
+                                                },
+                                                "val": {}
+                                            },
+                                            "required": ["col","op","val"],
+                                            "additionalProperties": False
+                                        },
+                                        "minItems": 1
+                                    }
+                                },
+                                "additionalProperties": True
+                            }
                         },
-                        "required": ["tool"]
+                        "required": ["tool"],
+                        "additionalProperties": False
                     }
                 },
                 "why": {
                     "type": "string",
-                    "description": "One-sentence rationale (<=120 chars).",
-                    "maxLength": 120
+                    "maxLength": 120,
+                    "description": "One-sentence rationale."
                 },
                 "assumptions": {
                     "type": "array",
-                    "items": {
-                        "type": "string",
-                        "maxLength": 120
-                    },
-                    "maxItems": 3,
-                    "description": "0–3 short bullets that state key assumptions."
+                    "items": {"type": "string", "maxLength": 120},
+                    "maxItems": 3
                 }
             },
             "required": ["steps", "why", "assumptions"],
@@ -46,6 +123,7 @@ MAKE_PLAN_SPEC = {
         }
     }
 }
+
 
 LOAD_BIWENGER_PLAYER_STATS_SPEC = {
     "type": "function",

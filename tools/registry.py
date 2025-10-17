@@ -6,12 +6,12 @@ from typing import Callable, Dict, Any
 
 # --- Import deterministic callables ---
 from tools.supabase_tools import load_biwenger_player_stats
-# (later you'll import df_tools.filter_df, etc.)
+from tools.dataframe_transformation_tools import apply_filters
 
 # --- Core registry of callable tools ---
 TOOL_REGISTRY: Dict[str, Callable[..., Any]] = {
     "load_biwenger_player_stats": load_biwenger_player_stats,
-    # Later you'll add: "filter_df": df_tools.execute_filter_plan, etc.
+    "filter_df": apply_filters,
 }
 
 # --- Unified executor for individual tools ---
@@ -26,19 +26,25 @@ def execute_tool(tool_name: str, args: dict | None = None) -> Any:
     return fn(**(args or {}))
 
 # --- Plan executor (for multi-step plans) ---
-def execute_plan(plan: dict) -> Any:
-    """
-    Executes a multi-step plan (Plan IR) where each step corresponds to
-    a registered tool. Returns the final DataFrame or object.
-    """
+def execute_plan(plan: dict):
     steps = plan.get("steps", [])
     if not steps:
         raise ValueError("Plan has no steps.")
-    df = None
+    current = None
     for step in steps:
         tool = step.get("tool")
         args = step.get("args", {}) or {}
-        df = execute_tool(tool, args)
-    if df is None:
+
+        if tool == "load_biwenger_player_stats":
+            current = execute_tool(tool, args)  # returns a DataFrame
+        elif tool == "filter_df":
+            if current is None:
+                raise ValueError("filter_df requires a DataFrame from a prior step.")
+            # inject the df expected by apply_filters(df, filters)
+            current = execute_tool(tool, {"df": current, **args})
+        else:
+            raise ValueError(f"Unknown tool: {tool}")
+
+    if current is None:
         raise ValueError("Plan produced no data.")
-    return df
+    return current
