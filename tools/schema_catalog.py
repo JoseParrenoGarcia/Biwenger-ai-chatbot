@@ -31,10 +31,22 @@ _SCHEMA_REGISTRY = {
             "date_column": "as_of_date",
         },
         "value_hints": {
-          "position": {
-            "values": ["Goalkeeper", "Defender", "Midfielder", "Forward"],
-            "complete": True,
-          },
+            "position": {
+                "values": ["Goalkeeper", "Defender", "Midfielder", "Forward"],
+                "complete": True,
+            },
+            "team": {
+                "values": ["Alavés", "Athletic", "Atlético", "Barcelona",
+                           "Betis", "Celta", "Elche", "Espanyol", "Getafe",
+                           "Girona", "Levante", "Mallorca", "Osasuna",
+                           "Rayo Vallecano", "Real Madrid", "Real Oviedo",
+                           "Real Sociedad", "Sevilla", "Valencia", "Villarreal"],
+                "complete": True,
+            },
+            "season": {
+                "values": ["2025/2026"],
+                "complete": True,
+            },
         }
     }
 }
