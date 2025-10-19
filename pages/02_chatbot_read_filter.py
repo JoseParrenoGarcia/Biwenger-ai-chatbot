@@ -1,6 +1,6 @@
 import streamlit as st
 
-from llm_clients.router import route_to_tool
+from llm_clients.router import route_to_tool, PLANNER_SYSTEM
 from tools.specs import PLANNER_TOOL_SPECS
 from tools.registry import execute_plan
 from tools.schema_catalog import get_planner_context
@@ -30,7 +30,13 @@ with st.container(border=True):
         try:
             with st.spinner("Planning…"):
                 schema_json = get_planner_context("biwenger_player_stats")
-                plan_call = route_to_tool(user_text, PLANNER_TOOL_SPECS, context=schema_json)  # ToolCall for make_plan
+                plan_call = route_to_tool(
+                    user_text,
+                    PLANNER_TOOL_SPECS,
+                    context=schema_json,
+                    force_tool_name="make_plan",  # <-- force the function call
+                    system_override=PLANNER_SYSTEM  # <-- use planner system
+                )
             plan = plan_call.args  # STRICT JSON plan (dict with steps, why, assumptions)
             st.session_state.llm_plan = plan
 
