@@ -2,82 +2,82 @@
 # The specs file defines how the LLM sees the tools.
 # ----------------------------------------------------
 MAKE_PLAN_SPEC = {
-    "type": "function",
-    "function": {
-        "name": "make_plan",
-        "description": (
-            "Plan the MINIMAL sequence of steps to satisfy the user's request using available tools.\n"
-            "Allowed steps now:\n"
-            "  - 'load_biwenger_player_stats' (load season snapshot as a DataFrame)\n"
-            "  - 'filter_df' (filter the current DataFrame; MUST include args.filters)\n"
-            "Always include 'why' (<=120 chars) and up to 3 short 'assumptions'. "
-            "Return STRICT JSON with keys: steps, why, assumptions."
-        ),
-        "parameters": {
+  "type": "function",
+  "function": {
+    "name": "make_plan",
+    "description": (
+      "Plan the MINIMAL sequence of steps to satisfy the user's request using available tools.\n"
+      "Allowed steps:\n"
+      "  - 'load_biwenger_player_stats' (load season snapshot as a DataFrame)\n"
+      "  - 'filter_df' (filter the current DataFrame; MUST include args.filters)\n"
+      "Rules:\n"
+      "  • Use the provided schema context; only use listed columns.\n"
+      "  • If a column appears in value_hints (e.g., team, position, season), map user text to a canonical value from that list and use '==' (never 'contains').\n"
+      "  • Return a PLAN object with keys: steps, why, assumptions. Do NOT return top-level 'filters' or any other shape.\n"
+      "  • Use the exact key 'args' (lowercase) for step arguments.\n"
+      "Always include 'why' (<=120 chars) and up to 3 short 'assumptions'."
+    ),
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
             "type": "object",
             "properties": {
-                "steps": {
+              "tool": {
+                "type": "string",
+                "enum": ["load_biwenger_player_stats", "filter_df"]
+              },
+              "args": {
+                "type": "object",
+                "description": (
+                  "Arguments for the step. For 'load_biwenger_player_stats', use an empty object {}. "
+                  "For 'filter_df', provide 'filters' as a non-empty array of {col, op, val}."
+                ),
+                "properties": {
+                  "filters": {
                     "type": "array",
-                    "minItems": 1,
                     "items": {
-                        "type": "object",
-                        "properties": {
-                            "tool": {
-                                "type": "string",
-                                "enum": ["load_biwenger_player_stats", "filter_df"]
-                            },
-                            "args": {
-                                "type": "object",
-                                "description": (
-                                    "Arguments for the step. For 'filter_df', you MUST provide 'filters' "
-                                    "as a non-empty array of {col, op, val}. Example:\n"
-                                    "{ \"filters\": [ {\"col\":\"player_name\",\"op\":\"contains\",\"val\":\"Mbappe\"}, "
-                                    "{\"col\":\"as_of_date\",\"op\":\">=\",\"val\":\"2025-01-01\"}, "
-                                    "{\"col\":\"as_of_date\",\"op\":\"<\",\"val\":\"2026-01-01\"} ] }"
-                                ),
-                                "properties": {
-                                    "filters": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "col": {"type": "string"},
-                                                "op": {
-                                                    "type": "string",
-                                                    "enum": ["==","!=",">",">=","<","<=","in","not_in","contains"]
-                                                },
-                                                "val": {}
-                                            },
-                                            "required": ["col","op","val"],
-                                            "additionalProperties": False
-                                        },
-                                        "minItems": 1
-                                    }
-                                },
-                                "additionalProperties": True
-                            }
+                      "type": "object",
+                      "properties": {
+                        "col": {"type": "string"},
+                        "op": {
+                          "type": "string",
+                          "enum": ["==","!=",">",">=","<","<=","in","not_in","contains"]
                         },
-                        "required": ["tool"],
-                        "additionalProperties": False
-                    }
+                        "val": {}
+                      },
+                      "required": ["col","op","val"],
+                      "additionalProperties": False
+                    },
+                    "minItems": 1
+                  }
                 },
-                "why": {
-                    "type": "string",
-                    "maxLength": 120,
-                    "description": "One-sentence rationale."
-                },
-                "assumptions": {
-                    "type": "array",
-                    "items": {"type": "string", "maxLength": 120},
-                    "maxItems": 3
-                }
+                "additionalProperties": False  # <-- close the keyspace
+              }
             },
-            "required": ["steps", "why", "assumptions"],
-            "additionalProperties": False
+            "required": ["tool","args"],        # <-- make args mandatory for every step
+            "additionalProperties": False        # <-- no stray keys like 'Arguments'
+          }
+        },
+        "why": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "One-sentence rationale."
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {"type": "string", "maxLength": 120},
+          "maxItems": 3
         }
+      },
+      "required": ["steps","why","assumptions"],
+      "additionalProperties": False
     }
+  }
 }
-
 
 LOAD_BIWENGER_PLAYER_STATS_SPEC = {
     "type": "function",

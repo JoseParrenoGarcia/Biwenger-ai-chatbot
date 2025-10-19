@@ -29,6 +29,11 @@ _SCHEMA_REGISTRY = {
         "rules": {
             "only_use_listed_columns": True,
             "date_column": "as_of_date",
+            "categorical_guidance": (
+                    "For categorical columns that appear in value_hints (e.g., team, position, season): "
+                    "use EXACT matches (op ==) and prefer the canonical values listed under value_hints. "
+                    "For example, if user says 'Madrid', map it to 'Real Madrid' using the closest or canonical value."
+                )
         },
         "value_hints": {
             "position": {
