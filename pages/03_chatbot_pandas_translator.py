@@ -1,47 +1,52 @@
-# pages/03_planner_and_translator.py
+# pages/04_planner_translate_execute.py
 import json
+import re
+import pandas as pd
 import streamlit as st
 
 from llm_clients.router import route_to_tool, PLANNER_SYSTEM
 from tools.specs import PLANNER_TOOL_SPECS
-from tools.registry import execute_plan
+from tools.registry import execute_plan, execute_tool  # <-- NEW: we'll call load_* directly for df_in
 from tools.schema_catalog import get_planner_context
 
-st.set_page_config(page_title="EDA Chatbot — Planner + Pandas Translator", layout="wide")
-st.title("Phase 3 — Planner (make_plan) + Pandas Code (translate_to_pandas)")
+TABLE = "biwenger_player_stats"
+
+st.set_page_config(page_title="EDA Chatbot — Plan + Translate + Execute", layout="wide")
+st.title("Phase 3 — Plan → Pandas code → Execute (MVP)")
 
 with st.container(border=True):
-    st.subheader("LLM Planner")
+    st.subheader("1) Plan with the LLM")
 
     user_text = st.text_input(
-        "Type a request (e.g., 'Real Madrid players in Oct 2025, show name/value/points sorted by value desc')",
-        "Show Madrid players in Oct 2025 sorted by value desc; keep player_name,value,points."
+        "Type a request",
+        "Real Madrid players in Oct 2025, return player_name, value, points; sort by value desc"
     )
-
-    table = "biwenger_player_stats"
-
-    st.markdown("**Planner tool:** `MAKE_PLAN_SPEC` (allowed steps: load_biwenger_player_stats, filter_df, translate_to_pandas)")
 
     colA, colB = st.columns([1, 1])
     plan_clicked = colA.button("Plan with LLM", type="primary")
-    run_clicked  = colB.button("Execute plan (non-destructive)")
+    exec_plan_clicked = colB.button("Execute plan (show DF or code)")
 
+    # Session state
     if "llm_plan" not in st.session_state:
         st.session_state.llm_plan = None
-    if "last_outputs" not in st.session_state:
-        st.session_state.last_outputs = []  # collect step-wise outputs
+    if "python_code" not in st.session_state:
+        st.session_state.python_code = None
+    if "df_in" not in st.session_state:
+        st.session_state.df_in = None
+    if "df_out" not in st.session_state:
+        st.session_state.df_out = None
 
     # ---- PLAN ----
     if plan_clicked:
         try:
             with st.spinner("Planning…"):
-                # get schema context for planner; tolerate JSON string or dict
-                schema_ctx = get_planner_context(table)
+                schema_ctx = get_planner_context(TABLE)
+                # Some implementations return a JSON string; normalize to dict if so.
                 if isinstance(schema_ctx, str):
                     try:
                         schema_ctx = json.loads(schema_ctx)
                     except Exception:
-                        pass  # if it's already a compact string, pass it through
+                        pass
 
                 plan_call = route_to_tool(
                     user_text,
@@ -50,65 +55,143 @@ with st.container(border=True):
                     force_tool_name="make_plan",
                     system_override=PLANNER_SYSTEM
                 )
-            plan = plan_call.args  # STRICT JSON plan (dict with steps, why, assumptions)
-            st.session_state.llm_plan = plan
-            st.session_state.last_outputs = []
-
+            st.session_state.llm_plan = plan_call.args
+            st.session_state.python_code = None
+            st.session_state.df_in = None
+            st.session_state.df_out = None
             st.success("Planned ✔")
+
             with st.expander("Plan (JSON)"):
                 st.json(st.session_state.llm_plan, expanded=True)
 
-            # Quick plan summary
-            steps = [s.get("tool") for s in plan.get("steps", [])]
+            steps = [s.get("tool") for s in st.session_state.llm_plan.get("steps", [])]
             st.info(f"Planned steps: {steps}")
 
         except Exception as e:
             st.session_state.llm_plan = None
-            st.session_state.last_outputs = []
             st.error("Planning failed.")
             st.exception(e)
 
-    # ---- EXECUTE (no arbitrary code execution here) ----
-    if run_clicked and st.session_state.llm_plan:
-        plan = st.session_state.llm_plan
-
-        with st.expander("Plan (JSON)"):
-            st.json(plan, expanded=True)
-
+    # ---- EXECUTE PLAN (non-destructive) ----
+    if exec_plan_clicked and st.session_state.llm_plan:
         try:
             with st.spinner("Executing plan…"):
-                # Your registry’s executor should chain steps in order.
-                # It may return a DataFrame (deterministic path) or a dict with {"python_code": "..."} for translate_to_pandas.
-                result = execute_plan(plan)  # expected to run: load_* -> (filter_df | translate_to_pandas)
+                result = execute_plan(st.session_state.llm_plan)
 
-            st.session_state.last_outputs.append(result)
             st.success("Plan executed ✔")
 
-            # ---- Render outputs ----
-            # Case A: deterministic path returns a DataFrame
-            if hasattr(result, "head"):  # naive check for DataFrame-like
-                row_count = getattr(result, "__len__", lambda: None)() or 0
-                st.markdown(f"**Result (DataFrame):** {row_count} rows")
-                st.dataframe(result, use_container_width=True, height=480)
+            # Case A: deterministic path returned a DataFrame
+            if hasattr(result, "head"):
+                st.session_state.df_out = result
+                st.session_state.python_code = None
 
-            # Case B: translator path returns code dict
+                st.markdown("**Result (deterministic DataFrame):**")
+                st.dataframe(result, use_container_width=True, height=480)
+                st.caption(f"{len(result)} rows × {result.shape[1]} cols")
+
+            # Case B: translator path returned a code dict
             elif isinstance(result, dict) and "python_code" in result:
-                st.markdown("**Result (pandas code from translate_to_pandas):**")
-                st.code(result["python_code"], language="python")
-                st.caption("This is code only; not executed here.")
+                st.session_state.python_code = result["python_code"]
+                st.session_state.df_out = None  # reset
+
+                st.markdown("**Result (pandas code from `translate_to_pandas`):**")
+                st.code(st.session_state.python_code, language="python")
+                st.caption("This is code only; not executed yet.")
+
+                # NEW: preload df_in so we can run code locally after translation
+                st.session_state.df_in = execute_tool("load_biwenger_player_stats", {})
+                st.info(f"Loaded df_in for execution: {len(st.session_state.df_in)} rows")
 
             else:
-                st.warning("Executor returned an unexpected type. Check the registry's return values.")
+                st.warning("Executor returned an unexpected type.")
                 st.write(result)
 
         except Exception as e:
             st.error("Execution failed.")
             st.exception(e)
 
-with st.expander("Debug: last outputs"):
-    st.write(st.session_state.last_outputs)
+with st.container(border=True):
+    st.subheader("2) Run generated pandas code locally (Option 1: simple exec)")
+
+    run_clicked = st.button("Run code against df_in", type="primary", disabled=st.session_state.python_code is None)
+
+    # --- Lightweight, explicit execution path (Option 1) ---
+    if run_clicked:
+        if st.session_state.python_code is None:
+            st.error("No pandas code to execute. Plan and execute first.")
+            st.stop()
+        if st.session_state.df_in is None:
+            st.error("No df_in loaded. Ensure the plan includes a load step or load it manually.")
+            st.stop()
+
+        code_str = st.session_state.python_code
+        df_in = st.session_state.df_in
+
+        # 2.1 (Optional) strip triple fences
+        if code_str.startswith("```"):
+            first_nl = code_str.find("\n")
+            code_str = code_str[first_nl + 1:] if first_nl != -1 else code_str
+            if code_str.endswith("```"):
+                code_str = code_str[:-3]
+            code_str = code_str.strip()
+
+        # 2.2 (Optional) ultra-thin guardrails (still Option 1)
+        # Length caps
+        if len(code_str) > 4000 or code_str.count("\n") > 80:
+            st.error("Code too long. Refuse to execute.")
+            st.stop()
+        # Crude bans (no imports beyond pandas, no I/O hints)
+        forbidden = ["import ", "__import__", "open(", "to_sql", "read_", "os.", "sys.", "subprocess", "socket", "requests"]
+        if any(tok in code_str for tok in forbidden):
+            st.error("Code contains forbidden operations. Refusing to execute.")
+            st.stop()
+
+        # Optional: quick schema check (regex) — ensures only known columns are referenced
+        try:
+            schema_spec = get_planner_context(TABLE)
+            if isinstance(schema_spec, str):
+                schema_spec = json.loads(schema_spec)
+            known_cols = {c["name"] for c in (schema_spec.get("columns") or [])}
+            refs = set(re.findall(r"df\[['\"]([^'\"]+)['\"]\]", code_str))
+            unknown = [c for c in refs if c not in known_cols]
+            if unknown:
+                st.warning(f"Code references unknown columns: {unknown} — execution may fail.")
+        except Exception:
+            pass  # keep going; this is only a hint
+
+        # 2.3 Execute with minimal namespace
+        try:
+            globals_ns = {"pd": pd}       # only pandas in globals
+            locals_ns = {"df_in": df_in}  # df_in is provided here
+
+            with st.spinner("Running code…"):
+                exec(code_str, globals_ns, locals_ns)
+
+            df_out = locals_ns.get("df_out")
+            if df_out is None:
+                st.error("Execution produced no 'df_out'.")
+                st.stop()
+
+            st.session_state.df_out = df_out
+            st.success("Code executed ✔")
+
+            st.dataframe(df_out, use_container_width=True, height=480)
+            st.caption(f"{len(df_out)} rows × {df_out.shape[1]} cols")
+
+        except Exception as e:
+            st.error("Code execution failed.")
+            st.exception(e)
+
+with st.expander("Debug / session state"):
+    st.write({
+        "has_plan": st.session_state.llm_plan is not None,
+        "has_python_code": st.session_state.python_code is not None,
+        "df_in_rows": (len(st.session_state.df_in) if st.session_state.df_in is not None else None),
+        "df_out_rows": (len(st.session_state.df_out) if st.session_state.df_out is not None else None),
+    })
 
 st.caption(
-    "This page uses the LLM planner to propose steps and then executes them via the registry. "
-    "If the plan uses 'translate_to_pandas', the page shows the generated pandas code (without executing it)."
+    "This page: (1) plans with the LLM, (2) executes via registry to get either a DataFrame or pandas code, "
+    "and (3) runs the code locally with a minimal exec (Option 1). "
+    "When ready, you can harden this by adding timeouts, a subprocess sandbox, or AST allowlisting."
 )
