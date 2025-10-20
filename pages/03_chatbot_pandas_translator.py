@@ -135,17 +135,6 @@ with st.container(border=True):
                 code_str = code_str[:-3]
             code_str = code_str.strip()
 
-        # 2.2 (Optional) ultra-thin guardrails (still Option 1)
-        # Length caps
-        if len(code_str) > 4000 or code_str.count("\n") > 80:
-            st.error("Code too long. Refuse to execute.")
-            st.stop()
-        # Crude bans (no imports beyond pandas, no I/O hints)
-        forbidden = ["import ", "__import__", "open(", "to_sql", "read_", "os.", "sys.", "subprocess", "socket", "requests"]
-        if any(tok in code_str for tok in forbidden):
-            st.error("Code contains forbidden operations. Refusing to execute.")
-            st.stop()
-
         # Optional: quick schema check (regex) — ensures only known columns are referenced
         try:
             schema_spec = get_planner_context(TABLE)
