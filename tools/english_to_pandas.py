@@ -28,6 +28,7 @@ class EnglishToPandas:
         self,
         user_query: str,
         schema_spec: Dict[str, Any],          # <- pass _SCHEMA_REGISTRY[table]
+        alias_hints: Optional[Dict[str, str]] = None
     ) -> str:
         """
         Returns a pandas snippet as a string. The snippet MUST:
@@ -47,39 +48,51 @@ class EnglishToPandas:
         date_col = rules.get("date_column")
         date_cols = [date_col] if date_col else []
 
-        # categorical hints (teams/positions/seasons) from value_hints
         vh = schema_spec.get("value_hints", {}) or {}
-        # keep hints compact; only names and up to ~12 values each
-        cats_lines = []
-        for k, meta in vh.items():
-            values = meta.get("values", [])
-            if values:
-                cats_lines.append(f"- {k}: {values[:12]}")
-        cats_block = "\n".join(cats_lines) if cats_lines else "None"
-
-        categorical_guidance = rules.get("categorical_guidance", "")
+        team_canon = (vh.get("team", {}) or {}).get("values", [])
+        pos_canon = (vh.get("position", {}) or {}).get("values", [])
+        season_canon = (vh.get("season", {}) or {}).get("values", [])
 
         columns_block = "\n".join(f"- {name}: {dtype}" for name, dtype in cols.items()) or "None"
+        alias_hints = alias_hints or {}
+        alias_str = ", ".join(f"{k} -> {v}" for k, v in alias_hints.items()) or "None"
+
+        # Keep canonical lists short but explicit
+        canon_block = textwrap.dedent(f"""\
+                Canonical values:
+                - team: {team_canon}
+                - position: {pos_canon}
+                - season: {season_canon}
+                """).strip()
 
         prompt = textwrap.dedent(f"""
-        You write ONE pandas snippet that transforms an existing DataFrame named df_in into df_out.
+                You write ONE pandas snippet that transforms an existing DataFrame named df_in into df_out.
 
-        RULES (strict):
-        - Use ONLY these columns and dtypes:
-        {columns_block}
-        - Date columns: {date_cols}
-        - Categorical hints (subset):
-        {cats_block}
-        - Guidance: {categorical_guidance}
-        - Imports: only "import pandas as pd".
-        - Start with: df = df_in.copy()
-        - If filtering a date column, ensure datetime: df['col'] = pd.to_datetime(df['col'], errors='coerce')
-        - End with: df_out = df
-        - No file/network I/O. No other libraries. No prose—return CODE ONLY.
+                RULES (strict):
+                - Use ONLY these columns and dtypes:
+                {columns_block}
+                - Date columns: {date_cols}
+                - {canon_block}
+                - Alias hints: {alias_str}
+                - Categorical policy:
+                  * NEVER modify categorical columns (e.g., NO df['team'].replace(...)).
+                  * Filter using EXACT equality (==) against canonical values only.
+                  * If the user mentions a non-canonical alias (e.g., "Madrid"), map via alias_hints if present;
+                    otherwise choose the canonical value that the alias clearly refers to (e.g., "Real Madrid").
+                - Date policy:
+                  * If filtering by a month or range, coerce the date column once:
+                      df['{date_col}'] = pd.to_datetime(df['{date_col}'], errors='coerce')
+                    Then use inclusive bounds with ISO strings: 
+                      (df['{date_col}'] >= 'YYYY-MM-DD') & (df['{date_col}'] <= 'YYYY-MM-DD')
+                    Do NOT filter with .dt.year/.dt.month when a concrete month range is implied.
+                - Imports: only "import pandas as pd".
+                - Start with: df = df_in.copy()
+                - End with: df_out = df
+                - No file/network I/O. No other libraries. Return CODE ONLY (no prose).
 
-        USER REQUEST:
-        {user_query}
-        """).strip()
+                USER REQUEST:
+                {user_query}
+                """).strip()
 
         # --- Call OpenAI directly (simple + explicit) ---
         client = get_openai_client()
