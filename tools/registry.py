@@ -14,7 +14,7 @@ from tools.schema_catalog import get_planner_context
 # --- Core registry of callable tools ---
 TOOL_REGISTRY: Dict[str, Callable[..., Any]] = {
     "load_biwenger_player_stats": load_biwenger_player_stats,
-    "filter_df": apply_filters,
+    # "filter_df": apply_filters,
     "translate_to_pandas": EnglishToPandas().generate_code,
 }
 
